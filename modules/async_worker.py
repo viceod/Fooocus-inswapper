@@ -96,6 +96,7 @@ class AsyncTask:
         self.invert_mask_checkbox = args.pop()
         self.inpaint_erode_or_dilate = args.pop()
         self.save_metadata_to_images = args.pop() if not args_manager.args.disable_metadata else False
+        
         self.metadata_scheme = MetadataScheme(
             args.pop()) if not args_manager.args.disable_metadata else MetadataScheme.FOOOCUS
 
@@ -107,6 +108,26 @@ class AsyncTask:
             cn_type = args.pop()
             if cn_img is not None:
                 self.cn_tasks[cn_type].append([cn_img, cn_stop, cn_weight])
+
+        self.inswapper_enabled = args.pop()
+        self.inswapper_source_image = args.pop()  
+        self.inswapper_source_image_indicies = args.pop()
+        self.inswapper_target_image_indicies = args.pop()
+
+        print(f"Inswapper: {'ENABLED' if self.inswapper_enabled else 'DISABLED'}")
+
+        self.photomaker_enabled = args.pop()
+        self.photomaker_images = args.pop()
+
+        print(f"PhotoMaker: {'ENABLED' if self.photomaker_enabled else 'DISABLED'}")
+
+        self.instantid_enabled = args.pop()
+        self.instantid_image_path = args.pop()
+        self.instantid_pose_image_path = args.pop()
+        self.instantid_identitynet_strength_ratio = args.pop()
+        self.instantid_adapter_strength_ratio = args.pop()
+
+        print(f"InstantID: {'ENABLED' if self.instantid_enabled else 'DISABLED'}")
 
         self.debugging_dino = args.pop()
         self.dino_erode_or_dilate = args.pop()
@@ -186,6 +207,8 @@ def worker():
     import extras.ip_adapter as ip_adapter
     import extras.face_crop
     import fooocus_version
+    import PIL.Image as Image
+
 
     from extras.censor import default_censor
     from modules.sdxl_styles import apply_style, get_random_style, fooocus_expansion, apply_arrays, random_style_name
@@ -200,6 +223,9 @@ def worker():
 
     pid = os.getpid()
     print(f'Started worker with PID {pid}')
+    from modules.face_swap import perform_face_swap
+    from modules.pm import generate_photomaker
+    from modules.instantid import generate_instantid
 
     try:
         async_gradio_app = shared.gradio_root
@@ -289,27 +315,65 @@ def worker():
                     positive_cond, negative_cond = core.apply_controlnet(
                         positive_cond, negative_cond,
                         pipeline.loaded_ControlNets[cn_path], cn_img, cn_weight, 0, cn_stop)
-        imgs = pipeline.process_diffusion(
-            positive_cond=positive_cond,
-            negative_cond=negative_cond,
-            steps=steps,
-            switch=switch,
-            width=width,
-            height=height,
-            image_seed=task['task_seed'],
-            callback=callback,
-            sampler_name=async_task.sampler_name,
-            scheduler_name=final_scheduler_name,
-            latent=initial_latent,
-            denoise=denoising_strength,
-            tiled=tiled,
-            cfg_scale=async_task.cfg_scale,
-            refiner_swap_method=async_task.refiner_swap_method,
-            disable_preview=async_task.disable_preview
-        )
+
+        if async_task.current_tab == 'photomaker' and async_task.photomaker_enabled == True and async_task.input_image_checkbox == True:
+            print("PhotoMaker: Begin")
+            photomaker_source_images = [Image.open(image.name) for image in async_task.photomaker_images]
+
+            photomaker_prompt = positive_basic_workloads[0]
+            photomaker_negative_prompt = negative_basic_workloads[0]
+
+            # TODO: figure out 77 token limit
+            # https://github.com/huggingface/diffusers/issues/2136#issuecomment-1514969011                    
+            # if use_expansion:
+            #     photomaker_prompt = photomaker_prompt + ' ' +  expansion.replace(prompt, "")
+            
+            print(f"PhotoMaker: Positive prompt: {photomaker_prompt}")
+            print(f"PhotoMaker: Negative prompt: {photomaker_negative_prompt}")
+
+            imgs = generate_photomaker(photomaker_prompt, photomaker_source_images, photomaker_negative_prompt, steps, task['task_seed'], width, height, async_task.cfg_scale, loras, async_task.sampler_name, async_task.scheduler_name, async_task)
+
+        elif async_task.current_tab == 'instantid' and async_task.instantid_enabled == True and async_task.input_image_checkbox == True:
+            print("InstantID: Begin")
+
+            instantid_prompt = positive_basic_workloads[0]
+            instantid_negative_prompt = negative_basic_workloads[0]
+
+            # TODO: figure out 77 token limit
+            # https://github.com/huggingface/diffusers/issues/2136#issuecomment-1514969011                    
+            # if use_expansion:
+            #     photomaker_prompt = photomaker_prompt + ' ' +  expansion.replace(prompt, "")
+            
+            print(f"InstantID: Positive prompt: {instantid_prompt}")
+            print(f"InstantID: Negative prompt: {instantid_negative_prompt}")
+
+            imgs = generate_instantid(instantid_image_path, instantid_pose_image_path, instantid_prompt, instantid_negative_prompt, steps, task['task_seed'], width, height, guidance_scale, loras, async_task.sampler_name, async_task.scheduler_name, async_task, async_task.instantid_identitynet_strength_ratio, async_task.instantid_adapter_strength_ratio)                    
+        else:
+            imgs = pipeline.process_diffusion(
+                positive_cond=positive_cond,
+                negative_cond=negative_cond,
+                steps=steps,
+                switch=switch,
+                width=width,
+                height=height,
+                image_seed=task['task_seed'],
+                callback=callback,
+                sampler_name=async_task.sampler_name,
+                scheduler_name=final_scheduler_name,
+                latent=initial_latent,
+                denoise=denoising_strength,
+                tiled=tiled,
+                cfg_scale=async_task.cfg_scale,
+                refiner_swap_method=async_task.refiner_swap_method,
+                disable_preview=async_task.disable_preview
+            )
         del positive_cond, negative_cond  # Save memory
         if inpaint_worker.current_task is not None:
             imgs = [inpaint_worker.current_task.post_process(x) for x in imgs]
+
+        if async_task.inswapper_enabled:
+            imgs = perform_face_swap(imgs, async_task.inswapper_source_image, async_task.inswapper_source_image_indicies, async_task.inswapper_target_image_indicies)
+
         current_progress = int(base_progress + (100 - preparation_steps) / float(all_steps) * steps)
         if modules.config.default_black_out_nsfw or async_task.black_out_nsfw:
             progressbar(async_task, current_progress, 'Checking for NSFW content ...')
