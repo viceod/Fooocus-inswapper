@@ -1198,13 +1198,15 @@ with shared.gradio_root:
             ctrls += [save_metadata_to_images, metadata_scheme]
 
         ctrls += ip_ctrls
+
+        ctrls += [inswapper_enabled, inswapper_source_image, inswapper_source_image_indicies, inswapper_target_image_indicies]
+        ctrls += [photomaker_enabled, photomaker_images]
+        ctrls += [instantid_enabled, instantid_source_image_path, instantid_pose_image_path, instantid_identitynet_strength_ratio, instantid_adapter_strength_ratio]
+
         ctrls += [debugging_dino, dino_erode_or_dilate, debugging_enhance_masks_checkbox,
                   enhance_input_image, enhance_checkbox, enhance_uov_method, enhance_uov_processing_order,
                   enhance_uov_prompt_type]
         ctrls += enhance_ctrls
-        ctrls += [inswapper_enabled, inswapper_source_image, inswapper_source_image_indicies, inswapper_target_image_indicies]
-        ctrls += [photomaker_enabled, photomaker_images]
-        ctrls += [instantid_enabled, instantid_source_image_path, instantid_pose_image_path, instantid_identitynet_strength_ratio, instantid_adapter_strength_ratio]
 
         def parse_meta(raw_prompt_txt, is_generating):
             loaded_json = None
