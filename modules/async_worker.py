@@ -320,8 +320,8 @@ def worker():
             print("PhotoMaker: Begin")
             photomaker_source_images = [Image.open(image.name) for image in async_task.photomaker_images]
 
-            photomaker_prompt = positive_basic_workloads[0]
-            photomaker_negative_prompt = negative_basic_workloads[0]
+            photomaker_prompt = async_task.prompt
+            photomaker_negative_prompt = async_task.negative_prompt
 
             # TODO: figure out 77 token limit
             # https://github.com/huggingface/diffusers/issues/2136#issuecomment-1514969011                    
@@ -336,8 +336,8 @@ def worker():
         elif async_task.current_tab == 'instantid' and async_task.instantid_enabled == True and async_task.input_image_checkbox == True:
             print("InstantID: Begin")
 
-            instantid_prompt = positive_basic_workloads[0]
-            instantid_negative_prompt = negative_basic_workloads[0]
+            instantid_prompt = async_task.prompt
+            instantid_negative_prompt = async_task.negative_prompt
 
             # TODO: figure out 77 token limit
             # https://github.com/huggingface/diffusers/issues/2136#issuecomment-1514969011                    
@@ -347,7 +347,7 @@ def worker():
             print(f"InstantID: Positive prompt: {instantid_prompt}")
             print(f"InstantID: Negative prompt: {instantid_negative_prompt}")
 
-            imgs = generate_instantid(instantid_image_path, instantid_pose_image_path, instantid_prompt, instantid_negative_prompt, steps, task['task_seed'], width, height, guidance_scale, loras, async_task.sampler_name, async_task.scheduler_name, async_task, async_task.instantid_identitynet_strength_ratio, async_task.instantid_adapter_strength_ratio)                    
+            imgs = generate_instantid(async_task.instantid_image_path, async_task.instantid_pose_image_path, instantid_prompt, instantid_negative_prompt, steps, task['task_seed'], width, height, async_task.cfg_scale, loras, async_task.sampler_name, async_task.scheduler_name, async_task, async_task.instantid_identitynet_strength_ratio, async_task.instantid_adapter_strength_ratio)                    
         else:
             imgs = pipeline.process_diffusion(
                 positive_cond=positive_cond,
